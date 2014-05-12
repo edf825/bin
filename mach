@@ -1,0 +1,72 @@
+#!/usr/bin/env python
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+from __future__ import print_function, unicode_literals
+from gi.repository import Notify
+
+import os
+import sys
+
+def ancestors(path):
+    while path:
+        yield path
+        (path, child) = os.path.split(path)
+        if child == "":
+            break
+
+def load_mach(topsrcdir):
+    sys.path[0:0] = [os.path.join(topsrcdir, "build")]
+    import mach_bootstrap
+    return mach_bootstrap.bootstrap(topsrcdir)
+
+def notify_result(result):
+  if len(sys.argv) < 2:
+    return result
+
+# This should be better. Oh well.
+  command = sys.argv[1]
+  srcdirparts = sys.path[0].split('/')
+  srcdir = srcdirparts[len(srcdirparts) - 3]
+  Notify.init("mach")
+
+  if command != "help":
+    if result == 0:
+      popup = Notify.Notification.new("SUCCESS", srcdir + " mach " + " ".join(sys.argv[1:]), "dialog-information")
+    else:
+      popup = Notify.Notification.new("FAIL", srcdir + " mach " + " ".join(sys.argv[1:]), "dialog-information")
+      popup.set_urgency(Notify.Urgency.CRITICAL)
+    popup.show()
+
+  return result
+
+# Check whether the current directory is within a mach src or obj dir.
+for dir_path in ancestors(os.getcwd()):
+    # If we find a "mozinfo.json" file, we are in the objdir.
+    mozinfo_path = os.path.join(dir_path, "mozinfo.json")
+    if os.path.isfile(mozinfo_path):
+        import json
+        info = json.load(open(mozinfo_path))
+        if "mozconfig" in info and "MOZCONFIG" not in os.environ:
+            # If the MOZCONFIG environment variable is not already set, set it
+            # to the value from mozinfo.json.  This will tell the build system
+            # to look for a config file at the path in $MOZCONFIG rather than
+            # its default locations.
+            #
+            # Note: subprocess requires native strings in os.environ Python
+            # 2.7.2 and earlier on Windows.
+            os.environ[b"MOZCONFIG"] = str(info["mozconfig"])
+
+        if "topsrcdir" in info:
+            # Continue searching for mach_bootstrap in the source directory.
+            dir_path = info["topsrcdir"]
+
+    # If we find the mach bootstrap module, we are in the srcdir.
+    mach_path = os.path.join(dir_path, "build/mach_bootstrap.py")
+    if os.path.isfile(mach_path):
+        mach = load_mach(dir_path)
+        sys.exit(notify_result(mach.run(sys.argv[1:])))
+
+print("Could not run mach: No mach source directory found")
+sys.exit(1)
