@@ -12,7 +12,10 @@ echo Screen state = $screen_state
 # If screen is off, turn it on.
 if [ $screen_state = 0 ]; then
   echo Waking screen
+  # works on most modern phones
   adb shell input keyevent 26
+  # ics and below?
+  adb shell input keyevent 83
 fi
 
 # Start Fennec.
